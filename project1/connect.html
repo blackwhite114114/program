@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT 连接测试工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
+    <style>
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status-connected {
+            background-color: #10b981;
+        }
+        .status-disconnected {
+            background-color: #ef4444;
+        }
+        .status-connecting {
+            background-color: #f59e0b;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen py-8">
+    <div class="max-w-4xl mx-auto px-4">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-8 text-center">MQTT 连接测试工具</h1>
+            
+            <!-- 连接状态 -->
+            <div class="mb-6 text-center">
+                <div id="connectionStatus" class="inline-block px-4 py-2 rounded-full text-white font-medium status-disconnected">
+                    未连接
+                </div>
+            </div>
+
+            <!-- 连接配置 -->
+            <div class="grid md:grid-cols-2 gap-6 mb-8">
+                <div class="space-y-4">
+                    <h2 class="text-xl font-semibold text-gray-700">连接配置</h2>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">MQTT Broker 地址</label>
+                        <input type="text" id="brokerHost" value="localhost" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">WebSocket 端口</label>
+                        <input type="number" id="brokerPort" value="8083" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">客户端 ID</label>
+                        <input type="text" id="clientId" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-2">用户名</label>
+                            <input type="text" id="username" placeholder="可选"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-2">密码</label>
+                            <input type="password" id="password" placeholder="可选"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-4">
+                        <button id="connectBtn" 
+                                class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                            连接
+                        </button>
+                        <button id="disconnectBtn" disabled
+                                class="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                            断开连接
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 订阅和发布 -->
+                <div class="space-y-4">
+                    <h2 class="text-xl font-semibold text-gray-700">订阅和发布</h2>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">订阅主题</label>
+                        <div class="flex space-x-2">
+                            <input type="text" id="subscribeTopicInput" value="test/topic" 
+                                   class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button id="subscribeBtn" disabled
+                                    class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                                订阅
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">发布主题</label>
+                        <input type="text" id="publishTopicInput" value="test/topic" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">消息内容</label>
+                        <textarea id="messageInput" rows="3" placeholder="输入要发布的消息..."
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    </div>
+                    
+                    <button id="publishBtn" disabled
+                            class="w-full bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                        发布消息
+                    </button>
+                </div>
+            </div>
+
+            <!-- 已订阅主题 -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">已订阅主题</h3>
+                <div id="subscribedTopics" class="flex flex-wrap gap-2">
+                    <!-- 动态添加订阅的主题 -->
+                </div>
+            </div>
+
+            <!-- 日志区域 -->
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-semibold text-gray-700">连接日志</h3>
+                    <button id="clearLogBtn" 
+                            class="text-sm bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded-md transition duration-200">
+                        清除日志
+                    </button>
+                </div>
+                <div id="logContainer" class="log-container bg-gray-50 border border-gray-200 rounded-md p-4 font-mono text-sm">
+                    <!-- 日志信息将在这里显示 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let client = null;
+        let isConnected = false;
+        const subscribedTopics = new Set();
+
+        // DOM 元素
+        const connectionStatus = document.getElementById('connectionStatus');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const subscribeBtn = document.getElementById('subscribeBtn');
+        const publishBtn = document.getElementById('publishBtn');
+        const logContainer = document.getElementById('logContainer');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        const subscribedTopicsContainer = document.getElementById('subscribedTopics');
+
+        // 生成随机客户端 ID
+        function generateClientId() {
+            return 'mqtt_client_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // 初始化客户端 ID
+        document.getElementById('clientId').value = generateClientId();
+
+        // 添加日志
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `mb-1 ${type === 'error' ? 'text-red-600' : type === 'success' ? 'text-green-600' : 'text-gray-700'}`;
+            logEntry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(status, text) {
+            connectionStatus.className = `inline-block px-4 py-2 rounded-full text-white font-medium status-${status}`;
+            connectionStatus.textContent = text;
+        }
+
+        // 更新按钮状态
+        function updateButtonStates() {
+            connectBtn.disabled = isConnected;
+            disconnectBtn.disabled = !isConnected;
+            subscribeBtn.disabled = !isConnected;
+            publishBtn.disabled = !isConnected;
+        }
+
+        // 添加订阅主题标签
+        function addSubscribedTopic(topic) {
+            const topicTag = document.createElement('span');
+            topicTag.className = 'bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm';
+            topicTag.innerHTML = `${topic} <button onclick="unsubscribe('${topic}')" class="ml-2 text-red-600 hover:text-red-800">×</button>`;
+            topicTag.id = `topic-${topic.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            subscribedTopicsContainer.appendChild(topicTag);
+        }
+
+        // 移除订阅主题标签
+        function removeSubscribedTopic(topic) {
+            const topicTag = document.getElementById(`topic-${topic.replace(/[^a-zA-Z0-9]/g, '_')}`);
+            if (topicTag) {
+                topicTag.remove();
+            }
+        }
+
+        // 取消订阅
+        function unsubscribe(topic) {
+            if (client && isConnected) {
+                client.unsubscribe(topic, (err) => {
+                    if (err) {
+                        addLog(`取消订阅失败: ${topic} - ${err.message}`, 'error');
+                    } else {
+                        subscribedTopics.delete(topic);
+                        removeSubscribedTopic(topic);
+                        addLog(`已取消订阅: ${topic}`, 'success');
+                    }
+                });
+            }
+        }
+
+        // 连接 MQTT
+        connectBtn.addEventListener('click', () => {
+            const host = document.getElementById('brokerHost').value;
+            const port = parseInt(document.getElementById('brokerPort').value);
+            const clientId = document.getElementById('clientId').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!host || !port || !clientId) {
+                addLog('请填写完整的连接信息', 'error');
+                return;
+            }
+
+            const options = {
+                clientId: clientId,
+                clean: true,
+                reconnectPeriod: 1000,
+                connectTimeout: 30000,
+            };
+
+            if (username) options.username = username;
+            if (password) options.password = password;
+
+            updateConnectionStatus('connecting', '连接中...');
+            addLog(`正在连接到 ${host}:${port}...`);
+
+            try {
+                client = mqtt.connect(`ws://${host}:${port}`, options);
+
+                client.on('connect', () => {
+                    isConnected = true;
+                    updateConnectionStatus('connected', '已连接');
+                    updateButtonStates();
+                    addLog('MQTT 连接成功!', 'success');
+                });
+
+                client.on('error', (err) => {
+                    addLog(`连接错误: ${err.message}`, 'error');
+                    updateConnectionStatus('disconnected', '连接失败');
+                    updateButtonStates();
+                });
+
+                client.on('close', () => {
+                    isConnected = false;
+                    updateConnectionStatus('disconnected', '连接已断开');
+                    updateButtonStates();
+                    addLog('MQTT 连接已断开', 'error');
+                });
+
+                client.on('message', (topic, payload) => {
+                    const message = payload.toString();
+                    addLog(`收到消息 [${topic}]: ${message}`, 'success');
+                });
+
+            } catch (error) {
+                addLog(`连接失败: ${error.message}`, 'error');
+                updateConnectionStatus('disconnected', '连接失败');
+            }
+        });
+
+        // 断开连接
+        disconnectBtn.addEventListener('click', () => {
+            if (client) {
+                client.end();
+                subscribedTopics.clear();
+                subscribedTopicsContainer.innerHTML = '';
+                addLog('主动断开连接');
+            }
+        });
+
+        // 订阅主题
+        subscribeBtn.addEventListener('click', () => {
+            const topic = document.getElementById('subscribeTopicInput').value;
+            if (!topic) {
+                addLog('请输入订阅主题', 'error');
+                return;
+            }
+
+            if (subscribedTopics.has(topic)) {
+                addLog(`已经订阅了主题: ${topic}`, 'error');
+                return;
+            }
+
+            client.subscribe(topic, (err) => {
+                if (err) {
+                    addLog(`订阅失败: ${topic} - ${err.message}`, 'error');
+                } else {
+                    subscribedTopics.add(topic);
+                    addSubscribedTopic(topic);
+                    addLog(`订阅成功: ${topic}`, 'success');
+                }
+            });
+        });
+
+        // 发布消息
+        publishBtn.addEventListener('click', () => {
+            const topic = document.getElementById('publishTopicInput').value;
+            const message = document.getElementById('messageInput').value;
+
+            if (!topic || !message) {
+                addLog('请输入发布主题和消息内容', 'error');
+                return;
+            }
+
+            client.publish(topic, message, (err) => {
+                if (err) {
+                    addLog(`发布失败: ${err.message}`, 'error');
+                } else {
+                    addLog(`消息已发布 [${topic}]: ${message}`, 'success');
+                    document.getElementById('messageInput').value = '';
+                }
+            });
+        });
+
+        // 清除日志
+        clearLogBtn.addEventListener('click', () => {
+            logContainer.innerHTML = '';
+        });
+
+        // 初始化
+        updateButtonStates();
+        addLog('MQTT 测试工具已就绪');
+    </script>
+</body>
+</html>
+
